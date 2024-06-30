@@ -1,0 +1,171 @@
+---
+title: "Prediction Assignment Write up"
+author: "Gian Carlo Sanfuego"
+date: "2024-06-30"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective:
+The main goal of this project is to predict exercise performance based on the
+"classe" variable in the training dataset. Various predictive models were
+evaluated using the provided test data.
+
+## Data Sources:
+Training Data: Accessed from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+Test Data: Accessed from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Features:
+Initially, the training dataset contained 19,622 observations with 160
+features. After filtering out irrelevant features and those with near-zero
+variance, the feature set was reduced to 44.
+
+Free up memory for download of the data sets
+```{r cars}
+rm(list = ls())
+```
+
+Get and set working directory
+```{r}
+setwd("D:/Desktop/DATA ANALYSIS/R/COURSE 8")
+```
+
+Define the list of packages to be installed
+```{r}
+packages <- c(
+  "dplyr", "caret", "rpart", "rattle", "gbm", "randomForest", "e1071", "corrplot", "ggplot2", "data.table"
+)
+```
+
+Install any packages that are not already installed
+```{r}
+installed_packages <- installed.packages()
+for (pkg in packages) {
+  if (!pkg %in% installed_packages[, "Package"]) {
+    install.packages(pkg, dependencies = TRUE)
+  }
+}
+```
+
+Load all the packages
+```{r}
+lapply(packages, library, character.only = TRUE)
+```
+
+Read/Import datasets from the directory
+```{r}
+trainingdataset <- read.csv('pml-training.csv')
+testingdataset <- read.csv('pml-testing.csv')
+dim(trainingdataset)
+```
+
+```{r}
+dim(testingdataset)
+```
+
+Split the data into training and test sets
+```{r}
+set.seed(1967)
+in_train  <- createDataPartition(trainingdataset$classe, p=0.80, list=FALSE)
+train_train_set <- trainingdataset[ in_train, ]
+train_test_set  <- trainingdataset[-in_train, ]
+dim(train_train_set)
+```
+
+```{r}
+dim(train_test_set)
+```
+
+Remove columns with mostly missing values with 90% threshold
+```{r}
+threshold <- 0.9
+train_train_set <- train_train_set %>% select_if(~mean(is.na(.)) <= threshold)
+train_test_set <- train_test_set %>% select_if(~mean(is.na(.)) <= threshold)
+```
+
+Remove also those variable with near zero variance
+```{r}
+nzv_var <- nearZeroVar(train_train_set)
+train_train_set <- train_train_set[ , -nzv_var]
+train_test_set  <- train_test_set[ , -nzv_var]
+dim(train_train_set)
+```
+
+```{r}
+dim(train_test_set)
+```
+
+Lets remove the first 5 columns since this is only ID column
+```{r}
+train_train_set <- train_train_set[ , -(1:5)]
+train_test_set <- train_test_set[ , -(1:5)]
+dim(train_train_set)
+```
+
+```{r}
+dim(train_test_set)
+```
+
+Modeling Decision Tree
+```{r}
+modelDT <- rpart(classe ~ ., data = train_train_set, method="class")
+summary(modelDT)
+fancyRpartPlot(modelDT)
+```
+
+Predict Decision Tree
+```{r}
+predict_DT <- predict(modelDT, newdata = train_test_set, type="class")
+conf_matrix_DT <- confusionMatrix(table(predict_DT, train_test_set$classe))
+conf_matrix_DT
+```
+
+Modeling GBM
+```{r}
+set.seed(1967)
+ctrl_GBM <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+modelGBM  <- train(classe ~ ., data = train_train_set, method = "gbm",
+                  trControl = ctrl_GBM, verbose = FALSE)
+modelGBM$finalModel
+```
+
+Predict using GBM
+```{r}
+predict_GBM <- predict(modelGBM, newdata = train_test_set)
+conf_matrix_GBM <- confusionMatrix(table(predict_GBM, train_test_set$classe))
+conf_matrix_GBM
+```
+
+Modeling Random Forest
+```{r}
+set.seed(1967)
+ctrl_RF <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+modelRF  <- train(classe ~ ., data = train_train_set, method = "rf",
+                 trControl = ctrl_RF, verbose = FALSE)
+modelRF$finalModel
+```
+
+Predict using Random Forest
+```{r}
+predict_RF <- predict(modelRF, newdata = train_test_set)
+conf_matrix_RF <- confusionMatrix(table(predict_RF, train_test_set$classe))
+conf_matrix_RF
+```
+
+## Conclusion:
+Accuracy:
+RF: 99.87%
+GBM: 98.78%
+DT: 75.45%
+
+Random Forest is the best-performing model for this classification task. It achieves the highest accuracy, nearly perfect sensitivity and specificity, and the highest kappa, indicating that it is the most reliable and accurate model for predicting the activity data. Gradient Boosting Machine also performs very well, with high accuracy and kappa, making it a strong alternative to RF. It is slightly less accurate but still very robust in its predictions. Decision Tree has significantly lower accuracy and kappa compared to RF and GBM. While it can classify activities, it is less reliable and should be used with caution for this particular task.
+
+```{r}
+cat("Predictions: ", paste(predict(modelRF, testingdataset)))
+```
+
